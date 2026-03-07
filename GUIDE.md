@@ -39,8 +39,8 @@
 
 - **১১ জন সদস্য** — তাদের জমা, প্রোফাইল ও আর্থিক ইতিহাস
 - **৭ ধরনের লেনদেন**: জমা, ঋণ প্রদান, ঋণ ফেরত, আয়, জরিমানা, খরচ, ক্ষতি
-- **মাসিক কিস্তি বকেয়া** (প্রতি সদস্য মাসে ৳৮,০০০)
-- **ঋণ ব্যবস্থাপনা** — প্রতি ঋণগ্রহীতার লাভ ট্র্যাকিং সহ
+- **দ্বৈত তারিখ ট্র্যাকিং (Dual-Date)**: প্রকৃত জমার তারিখ বনাম অ্যাকাউন্টিং মাস ট্র্যাকিং
+- **লাভ বণ্টন ও জরিমানা**: জমা অনুপাতে প্রফিট শেয়ার এবং বিলম্বের জন্য অটো-পেনাল্টি
 - **আর্থিক সারসংক্ষেপ** (সামগ্রিক + মাসিক ভাঙানো)
 
 **প্রযুক্তি**: HTML + CSS + Vanilla JavaScript, localStorage এ ডেটা সংরক্ষিত হয়।
@@ -163,38 +163,30 @@ Net Profit = Profit + Fines − Expenses − Losses
 
 **Explanation / ব্যাখ্যা:**
 
-- EN: The actual earnings of the fund after deducting expenses and losses. Fines are considered income because they come into the fund.
-- বাং: খরচ ও ক্ষতি বাদ দেওয়ার পর তহবিলের প্রকৃত আয়। জরিমানাকে আয় হিসেবে গণনা করা হয় কারণ তা তহবিলে আসে।
+- EN: Total fund Earnings. This is the pool used for distribution among members after penalty adjustments.
+- বাং: খরচ ও ক্ষতি বাদ দেওয়ার পর তহবিলের প্রকৃত আয়। এটিই সদস্যদের মধ্যে বণ্টনের মূল পুল।
 
-#### Profit Per Member / মাথাপিছু লভ্যাংশ
+#### Weighted Profit Share / আনুপাতিক লভ্যাংশ
 
 ```
 English:
-Profit Per Member = Net Profit ÷ Number of Active Members
+Member Share = (Member's Total Deposit ÷ Total Fund Deposit) × Net Profit
 
 বাংলা:
-মাথাপিছু লভ্যাংশ = নিট লাভ ÷ সক্রিয় সদস্য সংখ্যা
+সদস্যের অংশ = (সদস্যের মোট জমা ÷ তহবিলের মোট জমা) × নিট লাভ
 ```
 
 **Explanation / ব্যাখ্যা:**
 
-- EN: Each member's share of the fund's profit. This is distributed equally regardless of individual deposit amounts.
-- বাং: তহবিলের লাভে প্রতিটি সদস্যের অংশ। স্বতন্ত্র জমার পরিমাণ নির্বিশেষে এটি সমানভাবে বিতরণ করা হয়।
+- EN: Each member's share is now proportional to their contribution (capital logic).
+- বাং: লভ্যাংশ এখন জমার অনুপাত অনুযায়ী বণ্টন করা হয়। যার জমা যত বেশি, তার লাভের অংশ তত বড়।
 
-#### Individual Equity / ব্যক্তিগত পাওনা
-
-```
-English:
-Individual Equity = Member's Total Deposit + Profit Per Member
-
-বাংলা:
-ব্যক্তিগত পাওনা = সদস্যের মোট জমা + মাথাপিছু লভ্যাংশ
-```
+#### Discipline Penalty & Bonus / ডিসিপ্লিন পেনাল্টি ও বোনাস
 
 **Explanation / ব্যাখ্যা:**
 
-- EN: The total amount a member would receive if the fund is dissolved. It includes their deposits plus their share of profits.
-- বাং: তহবিল ভেঙে দিলে একজন সদস্য মোট যত টাকা পাবে। এতে তার জমা এবং লাভের অংশ অন্তর্ভুক্ত।
+- EN: If a member pays after the target month ends, a daily penalty (default 0.1%) is deducted from their share. This deducted pool is redistributed to members who paid on time.
+- বাং: কোনো সদস্য টার্গেট মাসের মধ্যে জমা না দিলে পরবর্তী মাসের ১ তারিখ থেকে প্রতিদিন ০.১% হারে লভ্যাংশ থেকে পেনাল্টি কাটা হয়। এই টাকা সময়মতো জমা দেওয়া সদস্যদের বাড়তি বোনাস হিসেবে দেওয়া হয়।
 
 #### Outstanding Loans / বকেয়া ঋণ
 
@@ -292,12 +284,11 @@ The due system uses a **flat monthly installment** model:
 
 ### বাংলা
 
-বকেয়া ব্যবস্থা একটি **নির্দিষ্ট মাসিক কিস্তি** মডেল ব্যবহার করে:
+বকেয়া ব্যবস্থা একটি **ক্যালেন্ডার মাস** ভিত্তিক মডেল ব্যবহার করে:
 
-- প্রতিটি সদস্য **মাসে ৳৮,০০০** দিতে বাধ্য (সেটিংসে `মাসিক কিস্তি` হিসেবে পরিবর্তনযোগ্য)
-- এটি একটি **নির্দিষ্ট পরিমাণ** — সদস্য ইতিমধ্যে কত জমা দিয়েছে তা নির্বিশেষে
-- মোট বকেয়া = সদস্য সংখ্যা × মাসিক কিস্তি
-- উদাহরণ: ১১ জন সদস্য × ৳৮,০০০ = ৳৮৮,০০০ মাসিক মোট বকেয়া
+- **গ্রেস পিরিয়ড**: মাসের যেকোনো দিন জমা দিলে তা ডিউ হিসেবে ধরা হবে না।
+- **বিলম্ব গণনা**: পরবর্তী মাসের ১ তারিখ থেকে বিলম্বের দিন (Late Days) গণনা শুরু হবে।
+- **পেনাল্টি ইমপ্যাক্ট**: বিলম্বের কারণে সদস্যের লভ্যাংশ (Profit Share) কমে যাবে, যা তার ফাইনাল আউটপুটে প্রভাব ফেলবে।
 
 ```
 Due Formula:
@@ -573,5 +564,5 @@ If you need to add a new type (e.g., "donation"):
 
 ---
 
-_Last Updated: March 5, 2026 / সর্বশেষ আপডেট: ৫ মার্চ, ২০২৬_
-_Version: 2.0 (V4 Data Format) / সংস্করণ: ২.০ (V4 ডেটা ফরম্যাট)_
+_Last Updated: March 8, 2026 / সর্বশেষ আপডেট: ৮ মার্চ, ২০২৬_
+_Version: 3.0 (V4 Data Format - Penalty Module Active) / সংস্করণ: ৩.০ (বিলম্ব পেনাল্টি মডিউল যুক্ত)_
