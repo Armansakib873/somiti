@@ -1022,20 +1022,53 @@ function switchTab(tabId, el, fromHistory = false) {
   }
 }
 
-function toggleFilterMode() {
-    if (currentFilterMode === "month") currentFilterMode = "year";
-    else if (currentFilterMode === "year") currentFilterMode = "all";
-    else {
-        currentFilterMode = "month";
-        currentFilterYear = new Date().getFullYear();
-        currentFilterMonth = new Date().getMonth();
+function toggleFilterMode(direction = 'next') {
+    const label = document.getElementById('month-label');
+    if (label) {
+        label.style.transition = 'none';
+        label.style.transform = direction === 'next' ? 'translateY(15px)' : 'translateY(-15px)';
+        label.style.opacity = '0';
+        // Force reflow
+        label.offsetHeight;
+        label.style.transition = 'all 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275)';
     }
+
+    if (currentFilterMode === "month") {
+        currentFilterMode = direction === 'next' ? "year" : "all";
+    } else if (currentFilterMode === "year") {
+        currentFilterMode = direction === 'next' ? "all" : "month";
+    } else {
+        currentFilterMode = direction === 'next' ? "month" : "year";
+        if (currentFilterMode === "month") {
+            currentFilterYear = new Date().getFullYear();
+            currentFilterMonth = new Date().getMonth();
+        }
+    }
+    
     refreshUI();
+    
+    if (label) {
+        setTimeout(() => {
+            label.style.transform = 'translateY(0)';
+            label.style.opacity = '1';
+        }, 10);
+    }
+
     const modes = { month: "মাসের হিসাব", year: "বছরের হিসাব", all: "সকল হিসাব" };
     showToast(modes[currentFilterMode] + " চালু হয়েছে");
 }
 
 function changeFilterStep(delta) {
+    const label = document.getElementById('month-label');
+    if (label) {
+        label.style.transition = 'none';
+        label.style.transform = delta > 0 ? 'translateX(15px)' : 'translateX(-15px)';
+        label.style.opacity = '0';
+        // Force reflow
+        label.offsetHeight;
+        label.style.transition = 'all 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275)';
+    }
+
     if (currentFilterMode === "all") {
         currentFilterMode = "month";
         currentFilterYear = new Date().getFullYear();
@@ -1049,7 +1082,15 @@ function changeFilterStep(delta) {
     } else if (currentFilterMode === "year") {
         currentFilterYear += delta;
     }
+    
     refreshUI();
+    
+    if (label) {
+        setTimeout(() => {
+            label.style.transform = 'translateX(0)';
+            label.style.opacity = '1';
+        }, 10);
+    }
 }
 
 function filterTransactions(f, el) { currentTxFilter = f; document.querySelectorAll("#tx-filter-chips .chip").forEach(c => c.classList.remove("active")); if(el) el.classList.add("active"); renderTransactions(true); }
@@ -3189,7 +3230,12 @@ let touchStartTime = 0;
 let isSwipeDownClose = false;
 let isRefreshing = false;
 let activeModalContent = null;
-const SWIPE_THRESHOLD = 250;
+let isPageSwiping = false;
+let currentTabView = null;
+let targetTabView = null;
+let swipeDirection = 0; // 1 for right (prev), -1 for left (next)
+const SWIPE_THRESHOLD = 80;
+const PAGE_SWIPE_THRESHOLD = 100; // Distance needed to commit page change
 const SWIPE_DOWN_CLOSE_THRESHOLD = 200;
 const SWIPE_DOWN_REFRESH_THRESHOLD = 80;
 
@@ -3210,8 +3256,9 @@ function initTouchHandlers() {
   document.addEventListener('touchmove', handleTouchMove, { passive: false });
   document.addEventListener('touchend', handleTouchEnd, { passive: false });
   
-  // Filter swipe navigation is disabled - users can tap on filter chips instead
-  // initFilterSwipe();
+  // Initialize filter swipe
+  initFilterSwipe();
+  initGlobalFilterSwipe();
   
   // Show swipe hint on first load for mobile users
   if ('ontouchstart' in window) {
@@ -3293,7 +3340,8 @@ function shouldInterceptTouch(e) {
   if (target.closest('input') || target.closest('select') || target.closest('textarea')) return false;
   if (target.closest('.no-swipe')) return false;
   // Skip page swipe when on filter chips in transaction page
-  if (target.closest('#tx-filter-chips') || target.closest('.filter-chips')) return false;
+  // Skip page swipe when on global filter bar
+  if (target.closest('.month-filter-bar')) return false;
   return true;
 }
 
@@ -3316,7 +3364,7 @@ function handleTouchStart(e) {
   activeModalContent = activeModal ? activeModal.querySelector('.modal-content') : null;
 }
 
-// Handle touch move - for swipe down to close modal
+// Handle touch move - for swipe down to close modal and page swiping
 function handleTouchMove(e) {
   if (touchStartY === -1) return;
   
@@ -3325,30 +3373,75 @@ function handleTouchMove(e) {
   const deltaY = currentY - touchStartY;
   const deltaX = currentX - touchStartX;
   
+  // Modal Swipe Down
   if (activeModalContent) {
-    // Only trigger swipe down if we are at the top of the modal content scroll
     if (deltaY > 0 && Math.abs(deltaX) < 60 && activeModalContent.scrollTop <= 0) {
       if (e.cancelable) e.preventDefault();
-      
-      // Disable transitions for immediate response during drag
       activeModalContent.style.transition = 'none';
-      
-      // Use a slight resistance
       const transformValue = deltaY * 0.75;
       activeModalContent.style.transform = `translateY(${transformValue}px)`;
-      
-      // Fade out slightly
       const opacityValue = 1 - (transformValue / (window.innerHeight * 0.6));
       activeModalContent.style.opacity = Math.max(0.5, opacityValue);
-      
       isSwipeDownClose = true;
       return;
     }
   }
   
-  // Pull to refresh on dashboard - only when at top of page
+  // Page Horizontal Swiping
+  if (!activeModalContent && !isRefreshing && Math.abs(deltaX) > 15 && Math.abs(deltaX) > Math.abs(deltaY)) {
+    const currentTab = getCurrentTab();
+    const currentIndex = tabOrder.indexOf(currentTab);
+    
+    // Determine target tab
+    let tTabId = null;
+    if (deltaX > 0 && currentIndex > 0) {
+      tTabId = tabOrder[currentIndex - 1];
+      swipeDirection = 1;
+    } else if (deltaX < 0 && currentIndex < tabOrder.length - 1) {
+      tTabId = tabOrder[currentIndex + 1];
+      swipeDirection = -1;
+    }
+    
+    if (tTabId) {
+      if (!isPageSwiping) {
+        currentTabView = document.getElementById(`view-${currentTab}`);
+        targetTabView = document.getElementById(`view-${tTabId}`);
+        if (currentTabView && targetTabView) {
+          isPageSwiping = true;
+          // Prepare target view
+          targetTabView.style.display = 'block';
+          targetTabView.style.position = 'absolute';
+          targetTabView.style.top = '20px'; // Match main padding
+          targetTabView.style.left = '16px'; // Match main padding
+          targetTabView.style.width = 'calc(100% - 32px)';
+          targetTabView.style.opacity = '0';
+          targetTabView.style.zIndex = '1';
+          currentTabView.style.zIndex = '2';
+        }
+      }
+      
+      if (isPageSwiping && currentTabView && targetTabView) {
+        if (e.cancelable) e.preventDefault();
+        const moveX = deltaX;
+        const progress = Math.abs(moveX) / window.innerWidth;
+        
+        currentTabView.style.transition = 'none';
+        targetTabView.style.transition = 'none';
+        
+        currentTabView.style.transform = `translateX(${moveX}px)`;
+        currentTabView.style.opacity = 1 - (progress * 0.5);
+        
+        const targetOffset = swipeDirection === 1 ? -window.innerWidth : window.innerWidth;
+        targetTabView.style.transform = `translateX(${targetOffset + moveX}px)`;
+        targetTabView.style.opacity = progress + 0.5;
+        return;
+      }
+    }
+  }
+  
+  // Pull to refresh
   const currentTab = getCurrentTab();
-  if (currentTab === 'dashboard' && deltaY > SWIPE_DOWN_REFRESH_THRESHOLD && touchStartY < 80 && !activeModalContent) {
+  if (currentTab === 'dashboard' && deltaY > SWIPE_DOWN_REFRESH_THRESHOLD && touchStartY < 80 && !activeModalContent && !isPageSwiping) {
     if (!isRefreshing && deltaY > SWIPE_DOWN_REFRESH_THRESHOLD) {
       if (e.cancelable) e.preventDefault();
       isRefreshing = true;
@@ -3368,32 +3461,24 @@ function handleTouchEnd(e) {
   const deltaY = touchEndY - touchStartY;
   const deltaTime = new Date().getTime() - touchStartTime;
   
+  // Modal Close Snap/Finish
   if (isSwipeDownClose && activeModalContent) {
-    // Re-enable transition for snapping or closing
     activeModalContent.style.transition = 'transform 0.3s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.3s ease';
-    
-    const threshold = 200; // Increased threshold to prevent accidental closing
-    
-    // Save reference to avoids closure issues with global activeModalContent
+    const threshold = 200;
     const modalToAnimate = activeModalContent;
-    
     if (deltaY > threshold) {
-      // Exit animation
       modalToAnimate.style.transform = 'translateY(100%)';
       modalToAnimate.style.opacity = '0';
       setTimeout(() => {
         closeAllModals();
-        // Reset styles after transition completes
         modalToAnimate.style.transform = '';
         modalToAnimate.style.opacity = '';
         modalToAnimate.style.transition = '';
       }, 300);
     } else {
-      // Snap back animation
       modalToAnimate.style.transform = 'translateY(0)';
       modalToAnimate.style.opacity = '1';
       setTimeout(() => {
-        // Clean up inline styles once back to normal
         modalToAnimate.style.transform = '';
         modalToAnimate.style.opacity = '';
         modalToAnimate.style.transition = '';
@@ -3406,26 +3491,92 @@ function handleTouchEnd(e) {
     return;
   }
   
-  if (deltaTime < 300 && Math.abs(deltaX) < 10 && Math.abs(deltaY) < 10) {
+  // Page Swipe Snap/Finish
+  if (isPageSwiping && currentTabView && targetTabView) {
+    const transitionStyle = 'transform 0.35s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.35s ease';
+    currentTabView.style.transition = transitionStyle;
+    targetTabView.style.transition = transitionStyle;
+    
+    const threshold = window.innerWidth * 0.25; // 25% of width to commit
+    
+    if (Math.abs(deltaX) > threshold || (Math.abs(deltaX) > 50 && deltaTime < 300)) {
+        // Commit change
+        const finalOffset = swipeDirection === 1 ? window.innerWidth : -window.innerWidth;
+        currentTabView.style.transform = `translateX(${finalOffset}px)`;
+        currentTabView.style.opacity = '0';
+        targetTabView.style.transform = 'translateX(0)';
+        targetTabView.style.opacity = '1';
+        
+        const newTabId = targetTabView.id.replace('view-', '');
+        
+        // Finalize
+        setTimeout(() => {
+            currentTabView.classList.remove('active');
+            currentTabView.style.transform = '';
+            currentTabView.style.opacity = '';
+            currentTabView.style.transition = '';
+            currentTabView.style.position = '';
+            
+            targetTabView.style.transform = '';
+            targetTabView.style.opacity = '';
+            targetTabView.style.transition = '';
+            targetTabView.style.position = '';
+            targetTabView.style.width = '';
+            targetTabView.style.top = '';
+            targetTabView.style.left = '';
+            
+            // Update UI elements
+            document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+            const navItem = document.querySelector(`.nav-item[data-tab="${newTabId}"]`);
+            if (navItem) navItem.classList.add('active');
+            
+            const fab = document.getElementById('fab-btn');
+            if (fab) {
+              (newTabId === 'settings' || newTabId === 'member-detail') ? fab.classList.add('hidden') : fab.classList.remove('hidden');
+            }
+            if (newTabId === 'settings') loadSettings();
+            
+            history.pushState({ tab: newTabId }, '', '#' + newTabId);
+        }, 350);
+    } else {
+        // Snap back
+        currentTabView.style.transform = 'translateX(0)';
+        currentTabView.style.opacity = '1';
+        const targetOffset = swipeDirection === 1 ? -window.innerWidth : window.innerWidth;
+        targetTabView.style.transform = `translateX(${targetOffset}px)`;
+        targetTabView.style.opacity = '0';
+        
+        setTimeout(() => {
+            targetTabView.classList.remove('active');
+            targetTabView.style.display = 'none';
+            
+            currentTabView.style.transform = '';
+            currentTabView.style.opacity = '';
+            currentTabView.style.transition = '';
+            
+            targetTabView.style.transform = '';
+            targetTabView.style.opacity = '';
+            targetTabView.style.transition = '';
+            targetTabView.style.position = '';
+            targetTabView.style.width = '';
+            targetTabView.style.top = '';
+            targetTabView.style.left = '';
+        }, 350);
+    }
+    
+    isPageSwiping = false;
+    currentTabView = null;
+    targetTabView = null;
     touchStartX = -1;
     touchStartY = -1;
     return;
   }
   
-  // Page swipe navigation is disabled
-  // Users can use bottom nav tabs instead
-  /*
-  if (Math.abs(deltaX) > SWIPE_THRESHOLD && Math.abs(deltaY) < 100 && deltaTime < 500 && !activeModalContent) {
-    const currentTab = getCurrentTab();
-    const currentIndex = tabOrder.indexOf(currentTab);
-    
-    if (deltaX > 0 && currentIndex > 0) {
-      animateTabChange(tabOrder[currentIndex - 1]);
-    } else if (deltaX < 0 && currentIndex < tabOrder.length - 1) {
-      animateTabChange(tabOrder[currentIndex + 1]);
-    }
+  if (deltaTime < 300 && Math.abs(deltaX) < 10 && Math.abs(deltaY) < 10) {
+    touchStartX = -1;
+    touchStartY = -1;
+    return;
   }
-  */
   
   touchStartX = -1;
   touchStartY = -1;
@@ -3463,44 +3614,65 @@ function performRefresh() {
 
 // Animate tab change with slide effect
 function animateTabChange(tabId) {
-  const viewSections = document.querySelectorAll('.view-section');
   const currentTab = getCurrentTab();
+  if (tabId === currentTab) return;
+  
+  const viewSections = document.querySelectorAll('.view-section');
   const currentIndex = tabOrder.indexOf(currentTab);
   const newIndex = tabOrder.indexOf(tabId);
   const direction = newIndex > currentIndex ? 'left' : 'right';
   
-  viewSections.forEach(section => {
-    if (section.classList.contains('active')) {
-      section.style.transition = 'transform 0.3s ease, opacity 0.3s ease';
-      section.style.transform = direction === 'left' ? 'translateX(-100%)' : 'translateX(100%)';
-      section.style.opacity = '0';
-      
-      setTimeout(() => {
-        section.classList.remove('active');
-        section.style.transform = '';
-        section.style.opacity = '';
-      }, 300);
-    }
-  });
+  const currentView = document.getElementById(`view-${currentTab}`);
+  const nextView = document.getElementById(`view-${tabId}`);
   
+  if (!currentView || !nextView) return;
+
+  // Prepare next view for entry
+  nextView.style.transition = 'none';
+  nextView.style.transform = direction === 'left' ? 'translateX(100%)' : 'translateX(-100%)';
+  nextView.style.opacity = '0';
+  nextView.classList.add('active');
+  
+  // Force reflow
+  nextView.offsetHeight;
+  
+  // Apply transitions
+  const transitionStyle = 'transform 0.4s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.4s ease';
+  currentView.style.transition = transitionStyle;
+  nextView.style.transition = transitionStyle;
+  
+  // Animate
+  currentView.style.transform = direction === 'left' ? 'translateX(-100%)' : 'translateX(100%)';
+  currentView.style.opacity = '0';
+  nextView.style.transform = 'translateX(0)';
+  nextView.style.opacity = '1';
+  
+  // Update Nav Items immediately for responsive feel
+  document.querySelectorAll('.nav-item').forEach(e => e.classList.remove('active'));
+  const navItem = document.querySelector(`.nav-item[data-tab="${tabId}"]`);
+  if (navItem) navItem.classList.add('active');
+  
+  // Update FAB visibility
+  const fab = document.getElementById('fab-btn');
+  if (fab) {
+    (tabId === 'settings' || tabId === 'member-detail') ? fab.classList.add('hidden') : fab.classList.remove('hidden');
+  }
+
   setTimeout(() => {
-    const newView = document.getElementById(`view-${tabId}`);
-    if (newView) {
-      newView.classList.add('active');
-    }
+    currentView.classList.remove('active');
+    currentView.style.transform = '';
+    currentView.style.opacity = '';
+    currentView.style.transition = '';
     
-    // Update nav
-    document.querySelectorAll('.nav-item').forEach(e => e.classList.remove('active'));
-    const navItem = document.querySelector(`.nav-item[data-tab="${tabId}"]`);
-    if (navItem) navItem.classList.add('active');
+    nextView.style.transform = '';
+    nextView.style.opacity = '';
+    nextView.style.transition = '';
     
-    // Update FAB visibility
-    const fab = document.getElementById('fab-btn');
-    if (fab) {
-      (tabId === 'settings' || tabId === 'member-detail') ? fab.classList.add('hidden') : fab.classList.remove('hidden');
-    }
     if (tabId === 'settings') loadSettings();
-  }, 100);
+  }, 400);
+  
+  // Update browser history
+  history.pushState({ tab: tabId }, '', '#' + tabId);
 }
 
 // Handle filter swipe
@@ -3574,3 +3746,32 @@ if (document.readyState === 'complete' || document.readyState === 'interactive')
   document.addEventListener('DOMContentLoaded', initTouchHandlers);
 }
 
+// Global Filter Swiping
+function initGlobalFilterSwipe() {
+  const bar = document.querySelector('.month-filter-bar');
+  if (!bar) return;
+  
+  let gStartX = 0;
+  let gStartY = 0;
+  
+  bar.addEventListener('touchstart', (e) => {
+    gStartX = e.changedTouches[0].screenX;
+    gStartY = e.changedTouches[0].screenY;
+  }, { passive: true });
+  
+  bar.addEventListener('touchend', (e) => {
+    const deltaX = e.changedTouches[0].screenX - gStartX;
+    const deltaY = e.changedTouches[0].screenY - gStartY;
+    
+    // Horizontal Swipes
+    if (Math.abs(deltaX) > 40 && Math.abs(deltaY) < 60) {
+      if (deltaX > 0) changeFilterStep(-1);
+      else changeFilterStep(1);
+    }
+    // Vertical Swipes
+    else if (Math.abs(deltaY) > 40 && Math.abs(deltaX) < 100) {
+      if (deltaY > 0) toggleFilterMode('prev');
+      else toggleFilterMode('next');
+    }
+  }, { passive: true });
+}
