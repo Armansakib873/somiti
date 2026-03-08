@@ -531,14 +531,14 @@ nav { position: absolute; bottom: 0; width: 100%; height: 68px; background: rgba
             </div>
           </div>
           
-                  <!-- Global Month Filter -->
+                  <!-- Global Smart Filter -->
         <div class="month-filter-bar">
-          <button class="month-nav-btn" onclick="changeMonth(-1)" aria-label="Previous month"><i class="fas fa-chevron-left"></i></button>
-          <div class="month-display" id="month-display" onclick="resetMonthFilter()">
-            <i class="fas fa-calendar-alt"></i>
+          <button class="month-nav-btn" onclick="changeFilterStep(-1)" aria-label="Previous"><i class="fas fa-chevron-left"></i></button>
+          <div class="month-display" id="month-display" onclick="toggleFilterMode()">
+            <i class="fas fa-filter"></i>
             <span id="month-label">সর্বকালীন</span>
           </div>
-          <button class="month-nav-btn" onclick="changeMonth(1)" aria-label="Next month"><i class="fas fa-chevron-right"></i></button>
+          <button class="month-nav-btn" onclick="changeFilterStep(1)" aria-label="Next"><i class="fas fa-chevron-right"></i></button>
         </div>
         
         
@@ -1648,7 +1648,9 @@ const defaultData = {
 // 🟢 Move these variables to the top so they are initialized before use
 let appState = null;
 let financialMetrics = {};
-let currentMonthFilter = null;
+let currentFilterMode = "all"; // "month", "year", "all"
+let currentFilterYear = new Date().getFullYear();
+let currentFilterMonth = new Date().getMonth();
 let currentTxFilter = "all";
 let currentMemberStatusFilter = "active";
 let confirmCallback = null;
@@ -1732,15 +1734,23 @@ function getDepositTarget(d) {
 }
 
 function getFilteredTransactions() {
-  if (!currentMonthFilter) return appState.transactions;
-  const year = currentMonthFilter.getFullYear(), month = currentMonthFilter.getMonth();
-  return appState.transactions.filter(tx => { const d = new Date(tx.date); return d.getFullYear() === year && d.getMonth() === month; });
+  if (!appState || !appState.transactions) return [];
+  if (currentFilterMode === "all") return appState.transactions;
+  return appState.transactions.filter(tx => { 
+      const d = new Date(tx.date); 
+      if (currentFilterMode === "year") return d.getFullYear() === currentFilterYear;
+      return d.getFullYear() === currentFilterYear && d.getMonth() === currentFilterMonth; 
+  });
 }
 
 function getFilteredDeposits() {
-  if (!currentMonthFilter) return appState.depositHistory || [];
-  const year = currentMonthFilter.getFullYear(), month = currentMonthFilter.getMonth();
-  return (appState.depositHistory || []).filter(d => { const dt = new Date(d.date); return dt.getFullYear() === year && dt.getMonth() === month; });
+  if (!appState || !appState.depositHistory) return [];
+  if (currentFilterMode === "all") return appState.depositHistory || [];
+  return (appState.depositHistory || []).filter(d => { 
+      const dt = new Date(d.date); 
+      if (currentFilterMode === "year") return dt.getFullYear() === currentFilterYear;
+      return dt.getFullYear() === currentFilterYear && dt.getMonth() === currentFilterMonth; 
+  });
 }
 
 function calculateFinances() {
@@ -1927,8 +1937,12 @@ function updateHeader() {
   if (dateEl) dateEl.textContent = new Date().toLocaleDateString("bn-BD", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
   const title = document.querySelector(".header-brand h1");
   if (title && appState.config?.fundName) title.textContent = appState.config.fundName;
-  const monthLabel = document.getElementById("month-label");
-  if (monthLabel) monthLabel.textContent = currentMonthFilter ? getMonthLabel(currentMonthFilter) : "সর্বকালীন";
+  const filterLabel = document.getElementById("month-label");
+  if (filterLabel) {
+      if (currentFilterMode === "all") filterLabel.innerHTML = "সর্বকালীন <small>(All Time)</small>";
+      else if (currentFilterMode === "year") filterLabel.textContent = `${toBengaliNum(currentFilterYear)} (সম্পূর্ণ বছর)`;
+      else filterLabel.textContent = `${bengaliMonths[currentFilterMonth]} ${toBengaliNum(currentFilterYear)}`;
+  }
 }
 
 function updateBalanceHero() {
@@ -1940,7 +1954,7 @@ function updateBalanceHero() {
 
 function updateDashboardStats() {
   const m = financialMetrics;
-  const isFiltered = currentMonthFilter !== null;
+  const isFiltered = currentFilterMode !== "all";
   document.getElementById("total-members").textContent = toBengaliNum(m.memberCount);
   document.getElementById("due-members").textContent = toBengaliNum(m.dueMembersCount);
   document.getElementById("total-revenue").textContent = fmtCurrency(isFiltered ? m.filtered.revenue : m.totalRevenue);
@@ -1950,11 +1964,17 @@ function updateDashboardStats() {
 function getAllTransactionsForDisplay() {
   const deposits = (appState.depositHistory || []).map(d => ({ ...d, type: "deposit" }));
   let filtered = [...appState.transactions, ...deposits];
-  if (currentMonthFilter) {
-    const year = currentMonthFilter.getFullYear(), month = currentMonthFilter.getMonth();
-    filtered = filtered.filter(tx => { const d = new Date(tx.date); return d.getFullYear() === year && d.getMonth() === month; });
+  if (currentFilterMode !== "all") {
+    filtered = filtered.filter(tx => { 
+        const d = new Date(tx.date); 
+        if (currentFilterMode === "year") return d.getFullYear() === currentFilterYear;
+        return d.getFullYear() === currentFilterYear && d.getMonth() === currentFilterMonth; 
+    });
   }
-  return filtered.sort((a, b) => new Date(b.date) - new Date(a.date));
+  
+  filtered.sort((a, b) => new Date(b.date) - new Date(a.date));
+  
+  return currentFilterMode === "all" ? filtered.slice(0, 50) : filtered;
 }
 
 function renderTransactionItem(tx, index, showDelete = true) {
@@ -1999,7 +2019,10 @@ function renderTransactions() {
   if (!container) return;
   let allTx = getAllTransactionsForDisplay();
   if (currentTxFilter !== "all") allTx = allTx.filter(tx => tx.type === currentTxFilter);
-  container.innerHTML = allTx.length === 0 ? renderEmptyState("fas fa-receipt", "কোনো লেনদেন পাওয়া যায়নি") : allTx.map((tx, i) => renderTransactionItem(tx, i, true)).join("");
+  
+  const capHint = currentFilterMode === "all" && allTx.length === 50 ? `<div style="text-align:center; padding: 10px; font-size: 0.8rem; color: var(--text-muted);">সর্বশেষ ৫০টি লেনদেন দেখানো হচ্ছে</div>` : '';
+  
+  container.innerHTML = allTx.length === 0 ? renderEmptyState("fas fa-receipt", "কোনো লেনদেন পাওয়া যায়নি") : allTx.map((tx, i) => renderTransactionItem(tx, i, true)).join("") + capHint;
 }
 
 function filterMemberStatus(status, el) {
@@ -2292,7 +2315,7 @@ function renderDue() {
 
 function renderSummary() {
   const m = financialMetrics;
-  const isFiltered = currentMonthFilter !== null;
+  const isFiltered = currentFilterMode !== "all";
   document.getElementById("sum-deposits").textContent = fmtCurrency(isFiltered ? m.filtered.deposits : m.totalDeposits);
   document.getElementById("sum-profit").textContent = fmtCurrency(isFiltered ? m.filtered.profit : m.totalProfit);
   document.getElementById("sum-fines").textContent = fmtCurrency(isFiltered ? m.filtered.fines : m.totalFines);
@@ -2391,12 +2414,35 @@ function switchTab(tabId, el) {
   if (tabId === "settings") loadSettings();
 }
 
-function changeMonth(delta) {
-  if (!currentMonthFilter) { currentMonthFilter = new Date(); currentMonthFilter.setDate(1); currentMonthFilter.setHours(0,0,0,0); }
-  currentMonthFilter.setMonth(currentMonthFilter.getMonth() + delta);
-  refreshUI();
+function toggleFilterMode() {
+    if (currentFilterMode === "month") currentFilterMode = "year";
+    else if (currentFilterMode === "year") currentFilterMode = "all";
+    else {
+        currentFilterMode = "month";
+        currentFilterYear = new Date().getFullYear();
+        currentFilterMonth = new Date().getMonth();
+    }
+    refreshUI();
+    const modes = { month: "মাসের হিসাব", year: "বছরের হিসাব", all: "সকল হিসাব" };
+    showToast(modes[currentFilterMode] + " চালু হয়েছে");
 }
-function resetMonthFilter() { currentMonthFilter = null; refreshUI(); showToast("সর্বকালীন দেখানো হচ্ছে"); }
+
+function changeFilterStep(delta) {
+    if (currentFilterMode === "all") {
+        currentFilterMode = "month";
+        currentFilterYear = new Date().getFullYear();
+        currentFilterMonth = new Date().getMonth();
+    }
+    
+    if (currentFilterMode === "month") {
+        let d = new Date(currentFilterYear, currentFilterMonth + delta, 1);
+        currentFilterYear = d.getFullYear();
+        currentFilterMonth = d.getMonth();
+    } else if (currentFilterMode === "year") {
+        currentFilterYear += delta;
+    }
+    refreshUI();
+}
 
 function filterTransactions(f, el) { currentTxFilter = f; document.querySelectorAll("#tx-filter-chips .chip").forEach(c => c.classList.remove("active")); if(el) el.classList.add("active"); renderTransactions(); }
 function filterMembers() { renderMembers(); }
@@ -3253,8 +3299,11 @@ function manageClearancePayment(logId) {
 
 function exportSummaryReportJPG() {
     const m = financialMetrics;
-    const isFiltered = currentMonthFilter !== null;
-    const periodStr = currentMonthFilter ? getMonthLabel(currentMonthFilter) : "সর্বকালীন (All Time)";
+    const isFiltered = currentFilterMode !== "all";
+    
+    let periodStr = "সর্বকালীন (All Time)";
+    if (currentFilterMode === "month") periodStr = `${bengaliMonths[currentFilterMonth]} ${toBengaliNum(currentFilterYear)}`;
+    else if (currentFilterMode === "year") periodStr = `${toBengaliNum(currentFilterYear)} (সম্পূর্ণ বছর)`;
 
     // 1. Populate Template
     document.getElementById("a4-sum-fund-title").textContent = appState.config?.fundName || "সমবায় ফান্ড প্রো";
