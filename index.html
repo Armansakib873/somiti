@@ -13,6 +13,7 @@
     <link rel="stylesheet" href="style.css">
   </head>
   <body>
+    <div id="swipe-hint" class="swipe-hint">👆 সোয়াইপ করুন</div>
     <div id="app-container">
 
       <!-- ===== HEADER ===== -->
@@ -586,15 +587,22 @@
 </div>
 <div class="form-group">
     <label>টাকার পরিমাণ (৳)</label>
-    
-              <input type="number" id="tx-amount" placeholder="০" required min="1" oninput="showAmountInWords(this.value)" />
-              <span id="amount-in-words" style="display:block;font-size:0.85rem;color:var(--primary);margin-top:4px;min-height:1.2em;"></span>
-            </div>
-            <div class="form-group">
-              <label>তারিখ</label>
-              <input type="date" id="tx-date" />
-              <span id="tx-date-bn" class="bengali-date-display"></span>
-            </div>
+    <div class="input-with-conversion">
+        <div>
+            <input type="number" id="tx-amount" placeholder="০" required min="1" oninput="showAmountInWords(this.value)" />
+        </div>
+        <span id="amount-in-words-inline" class="conversion-display empty">টাকার কথায়...</span>
+    </div>
+</div>
+<div class="form-group">
+    <label>তারিখ</label>
+    <div class="input-with-conversion">
+        <div>
+            <input type="date" id="tx-date" />
+        </div>
+        <span id="tx-date-bn-inline" class="conversion-display empty">তারিখ বাংলায়...</span>
+    </div>
+</div>
             <button type="submit" class="btn-submit"><i class="fas fa-check"></i> সেভ করুন</button>
           </form>
         </div>
@@ -617,12 +625,21 @@
     <div id="qd-dynamic-comment" class="dynamic-comment"></div>
     <div class="form-group">
         <label>প্রকৃত জমার তারিখ (Actual Date)</label>
-        <input type="date" id="qd-date" />
-        <span id="qd-date-bn" class="bengali-date-display"></span>
+        <div class="input-with-conversion">
+            <div>
+                <input type="date" id="qd-date" />
+            </div>
+            <span id="qd-date-bn-inline" class="conversion-display empty">তারিখ বাংলায়...</span>
+        </div>
     </div>
     <div class="form-group">
         <label>জমার পরিমাণ (৳)</label>
-        <input type="number" id="qd-amount" required min="1" />
+        <div class="input-with-conversion">
+            <div>
+                <input type="number" id="qd-amount" required min="1" />
+            </div>
+            <span id="qd-amount-bn-inline" class="conversion-display empty">টাকার কথায়...</span>
+        </div>
     </div>
     <div style="display: flex; gap: 10px; margin-top: 10px;">
         <button type="button" class="btn-action btn-danger-action" id="qd-clear-btn" style="display: none; margin: 0;" onclick="clearMonthDeposit()"><i class="fas fa-trash"></i> মুছুন</button>

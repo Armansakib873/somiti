@@ -120,24 +120,44 @@ function initBengaliDateDisplays() {
   const dateInputs = [
     { id: "setting-fund-start-date", displayId: "setting-fund-start-date-bn" },
     { id: "new-member-date", displayId: "new-member-date-bn" },
-    { id: "tx-date", displayId: "tx-date-bn" },
-    { id: "qd-date", displayId: "qd-date-bn" },
+    { id: "tx-date", inlineId: "tx-date-bn-inline" },
+    { id: "qd-date", inlineId: "qd-date-bn-inline" },
     { id: "edit-joining-date", displayId: "edit-joining-date-bn" }
   ];
   
   dateInputs.forEach(item => {
     const input = document.getElementById(item.id);
-    const display = document.getElementById(item.displayId);
-    if (input && display) {
-      // Set initial value
-      display.textContent = formatBengaliDate(input.value);
+    const display = item.displayId ? document.getElementById(item.displayId) : null;
+    const inlineDisplay = item.inlineId ? document.getElementById(item.inlineId) : null;
+    
+    if (input) {
+      // Set initial value for legacy display
+      if (display) {
+        display.textContent = formatBengaliDate(input.value);
+      }
+      // Set initial value for inline display
+      if (inlineDisplay) {
+        inlineDisplay.textContent = input.value ? formatBengaliDate(input.value) : "তারিখ বাংলায়...";
+        if (!input.value) inlineDisplay.classList.add("empty");
+        else inlineDisplay.classList.remove("empty");
+      }
       // Add event listener for changes
       input.addEventListener("change", function() {
-        display.textContent = formatBengaliDate(this.value);
+        if (display) display.textContent = formatBengaliDate(this.value);
+        if (inlineDisplay) {
+          inlineDisplay.textContent = this.value ? formatBengaliDate(this.value) : "তারিখ বাংলায়...";
+          if (!this.value) inlineDisplay.classList.add("empty");
+          else inlineDisplay.classList.remove("empty");
+        }
       });
       // Also update on input (for real-time typing)
       input.addEventListener("input", function() {
-        display.textContent = formatBengaliDate(this.value);
+        if (display) display.textContent = formatBengaliDate(this.value);
+        if (inlineDisplay) {
+          inlineDisplay.textContent = this.value ? formatBengaliDate(this.value) : "তারিখ বাংলায়...";
+          if (!this.value) inlineDisplay.classList.add("empty");
+          else inlineDisplay.classList.remove("empty");
+        }
       });
     }
   });
@@ -210,15 +230,35 @@ function numberToBengaliWords(num) {
 }
 
 function showAmountInWords(val) {
-  const span = document.getElementById("amount-in-words");
-  if (!span) return;
+  const inlineSpan = document.getElementById("amount-in-words-inline");
+  if (!inlineSpan) return;
 
   const num = parseFloat(val);
 
   if (!val || isNaN(num) || num <= 0) {
-    span.textContent = "";
+    inlineSpan.textContent = "টাকার কথায়...";
+    inlineSpan.classList.add("empty");
   } else {
-    span.textContent = numberToBengaliWords(num);
+    const words = numberToBengaliWords(num);
+    inlineSpan.textContent = words + " টাকা";
+    inlineSpan.classList.remove("empty");
+  }
+}
+
+// Update inline Bengali date display
+function updateInlineBengaliDate(inputId, displayId) {
+  const input = document.getElementById(inputId);
+  const display = document.getElementById(displayId);
+  if (!input || !display) return;
+
+  const dateVal = input.value;
+  if (dateVal) {
+    const bnDate = formatBengaliDate(dateVal);
+    display.textContent = bnDate;
+    display.classList.remove("empty");
+  } else {
+    display.textContent = "তারিখ বাংলায়...";
+    display.classList.add("empty");
   }
 }
 
@@ -958,18 +998,28 @@ function saveSettings() {
   saveData(); refreshUI(); showToast("সেটিংস সেভ হয়েছে");
 }
 
-function switchTab(tabId, el) {
+function switchTab(tabId, el, fromHistory = false) {
+  const currentTab = getCurrentTab();
+  if (tabId === currentTab) return;
+
   document.querySelectorAll(".nav-item").forEach(e => e.classList.remove("active"));
   if (el) el.classList.add("active");
   const navItem = document.querySelector(`.nav-item[data-tab="${tabId}"]`);
   if (navItem) { document.querySelectorAll(".nav-item").forEach(e => e.classList.remove("active")); navItem.classList.add("active"); }
+  
   document.querySelectorAll(".view-section").forEach(e => e.classList.remove("active"));
   const view = document.getElementById(`view-${tabId}`);
   if (view) view.classList.add("active");
+  
   const main = document.getElementById("main-content"); if (main) main.scrollTop = 0;
   const fab = document.getElementById("fab-btn");
   if (fab) { (tabId === "settings" || tabId === "member-detail") ? fab.classList.add("hidden") : fab.classList.remove("hidden"); }
   if (tabId === "settings") loadSettings();
+
+  // History management
+  if (!fromHistory) {
+      history.pushState({ tab: tabId }, '', '#' + tabId);
+  }
 }
 
 function toggleFilterMode() {
@@ -1030,7 +1080,28 @@ function openModal(type) {
   handleTypeChange();
   const dInput = document.getElementById("tx-date");
   if(!dInput.value) dInput.value = new Date().toLocaleDateString('en-CA');
+  
+  // Update inline Bengali date display
+  const dateBnInline = document.getElementById("tx-date-bn-inline");
+  if (dateBnInline) {
+    dateBnInline.textContent = formatBengaliDate(dInput.value);
+    dateBnInline.classList.remove("empty");
+  }
+  
+  // Update inline amount in words if there's already an amount
+  const amountInput = document.getElementById("tx-amount");
+  if (amountInput && amountInput.value) {
+    showAmountInWords(amountInput.value);
+  } else {
+    const amountInline = document.getElementById("amount-in-words-inline");
+    if (amountInline) {
+      amountInline.textContent = "টাকার কথায়...";
+      amountInline.classList.add("empty");
+    }
+  }
+  
   document.getElementById("tx-modal").classList.add("active");
+  history.pushState({ modal: 'tx-modal' }, '', '#modal');
 }
 function closeModal() {
   document.getElementById("tx-modal").classList.remove("active");
@@ -1041,6 +1112,17 @@ function closeModal() {
   // Reset modal title
   const modalTitle = document.getElementById("modal-title");
   if (modalTitle) modalTitle.innerHTML = `<i class="fas fa-plus-circle"></i> নতুন লেনদেন`;
+  // Reset inline displays
+  const amountInline = document.getElementById("amount-in-words-inline");
+  if (amountInline) {
+    amountInline.textContent = "টাকার কথায়...";
+    amountInline.classList.add("empty");
+  }
+  const dateInline = document.getElementById("tx-date-bn-inline");
+  if (dateInline) {
+    dateInline.textContent = "তারিখ বাংলায়...";
+    dateInline.classList.add("empty");
+  }
   setTimeout(() => { const d = document.getElementById("tx-date"); if(d) d.value = new Date().toISOString().split("T")[0]; }, 300);
 }
 
@@ -2539,6 +2621,26 @@ function openQuickDeposit(memberId, monthIndex, existingAmount = 0) {
     // Default actual date to today
     dateInput.value = new Date().toLocaleDateString('en-CA');
 
+    // Add event listener for amount input to show Bengali words
+    amountInput.oninput = function() {
+        const inlineDisplay = document.getElementById("qd-amount-bn-inline");
+        const num = parseFloat(this.value);
+        if (!this.value || isNaN(num) || num <= 0) {
+            if (inlineDisplay) {
+                inlineDisplay.textContent = "টাকার কথায়...";
+                inlineDisplay.classList.add("empty");
+            }
+        } else {
+            const words = numberToBengaliWords(num);
+            if (inlineDisplay) {
+                inlineDisplay.textContent = words + " টাকা";
+                inlineDisplay.classList.remove("empty");
+            }
+        }
+    };
+    // Trigger initial amount display
+    amountInput.oninput();
+
     // যদি আগে থেকে জমা থাকে, তাহলে এডিটের জন্য ভ্যালু দেখাবে এবং Clear বাটন আসবে
     if (existingAmount > 0) {
         amountInput.value = existingAmount;
@@ -2557,14 +2659,18 @@ function openQuickDeposit(memberId, monthIndex, existingAmount = 0) {
         clearBtn.style.display = "none";
     }
     
-    // Update Bengali date display and dynamic comment
-    const dateBn = document.getElementById("qd-date-bn");
-    if (dateBn) dateBn.textContent = formatBengaliDate(dateInput.value);
+    // Update inline Bengali date display
+    const dateBnInline = document.getElementById("qd-date-bn-inline");
+    if (dateBnInline) {
+        dateBnInline.textContent = formatBengaliDate(dateInput.value);
+        dateBnInline.classList.remove("empty");
+    }
     
     // Initialize dynamic comment
     updateQdDynamicComment();
     
     document.getElementById("quick-deposit-modal").classList.add("active");
+    history.pushState({ modal: 'quick-deposit-modal' }, '', '#quick-deposit');
 }
 
 // Dynamic comment updater for quick deposit modal
@@ -2665,6 +2771,17 @@ function initEditMemberDynamicComment() {
 function closeQuickDeposit() {
     document.getElementById("quick-deposit-modal").classList.remove("active");
     quickDepositContext = null;
+    // Reset inline displays
+    const amountInline = document.getElementById("qd-amount-bn-inline");
+    if (amountInline) {
+        amountInline.textContent = "টাকার কথায়...";
+        amountInline.classList.add("empty");
+    }
+    const dateInline = document.getElementById("qd-date-bn-inline");
+    if (dateInline) {
+        dateInline.textContent = "তারিখ বাংলায়...";
+        dateInline.classList.add("empty");
+    }
 }
 
 // নতুন ফাংশন: নির্দিষ্ট মাসের জমা ডিলিট করা
@@ -2771,6 +2888,7 @@ function openEditMember(memberId) {
     updateEditMemberDynamicComment();
     
     document.getElementById("edit-member-modal").classList.add("active");
+    history.pushState({ modal: 'edit-member-modal' }, '', '#edit-member');
 }
 
 function closeEditMember() {
@@ -3026,6 +3144,7 @@ function closeDueSummary() {
 
 function showRules() {
     document.getElementById("rules-modal").classList.add("active");
+    history.pushState({ modal: 'rules-modal' }, '', '#rules');
 }
 
 function closeRules() {
@@ -3060,3 +3179,398 @@ document.getElementById("clearance-detail-modal").addEventListener("click", e =>
 document.querySelectorAll(".modal-overlay").forEach(m => { m.addEventListener("touchmove", e => { if(e.target === m) e.preventDefault(); }, {passive:false}); });
 
 console.log("সমবায় ফান্ড প্রো ২.০ - Table Working ✅");
+
+// ========== SMARTPHONE TOUCH GESTURE HANDLERS ==========
+let touchStartX = -1;
+let touchStartY = -1;
+let touchEndX = -1;
+let touchEndY = -1;
+let touchStartTime = 0;
+let isSwipeDownClose = false;
+let isRefreshing = false;
+let activeModalContent = null;
+const SWIPE_THRESHOLD = 250;
+const SWIPE_DOWN_CLOSE_THRESHOLD = 200;
+const SWIPE_DOWN_REFRESH_THRESHOLD = 80;
+
+// Tab navigation order
+const tabOrder = ['dashboard', 'members', 'transactions', 'loans', 'summary'];
+
+// Initialize touch handlers
+function initTouchHandlers() {
+  // Handle browser back button - add multiple listeners to ensure it works
+  window.addEventListener('popstate', handlePopState);
+  
+  // Also try to handle Android hardware back button
+  if (window.AndroidBackHandler) {
+    window.AndroidBackHandler.onBackPressed = handleBackButton;
+  }
+  
+  document.addEventListener('touchstart', handleTouchStart, { passive: false });
+  document.addEventListener('touchmove', handleTouchMove, { passive: false });
+  document.addEventListener('touchend', handleTouchEnd, { passive: false });
+  
+  // Filter swipe navigation is disabled - users can tap on filter chips instead
+  // initFilterSwipe();
+  
+  // Show swipe hint on first load for mobile users
+  if ('ontouchstart' in window) {
+    const swipeHint = document.getElementById('swipe-hint');
+    if (swipeHint) {
+      setTimeout(() => swipeHint.classList.add('visible'), 2000);
+      setTimeout(() => swipeHint.classList.remove('visible'), 6000);
+    }
+  }
+}
+
+// Handle browser/system back button
+function handlePopState(e) {
+  e.preventDefault();
+  handleBackButton();
+}
+
+// Handle back button press
+function handleBackButton() {
+  // Check if any modal is open
+  const activeModal = document.querySelector('.modal-overlay.active');
+  if (activeModal) {
+    closeAllModals(true); // Don't trigger history.back() when closing from back button
+    return;
+  }
+  
+  // Get current tab
+  const currentTab = getCurrentTab();
+  if (currentTab && currentTab !== 'dashboard') {
+    // Go to dashboard/home
+    switchTab('dashboard', document.querySelector('[data-tab="dashboard"]'), true);
+  } else {
+    // On dashboard, try to exit app or minimize
+    if (window.history.length > 1) {
+      // Normal browser behavior
+    }
+  }
+}
+
+// Close all open modals
+function closeAllModals(fromHistory = false) {
+  const modals = document.querySelectorAll('.modal-overlay.active');
+  if (modals.length > 0 && !fromHistory) {
+      // If we are closing manually and modals were open, go back in history to remove the state
+      if (history.state && history.state.modal) history.back();
+  }
+
+  // Use specific close handlers for proper cleanup
+  if (document.getElementById('tx-modal').classList.contains('active')) closeModal();
+  if (typeof closeQuickDeposit === 'function' && document.getElementById('quick-deposit-modal').classList.contains('active')) closeQuickDeposit();
+  if (typeof closeDueSummary === 'function' && document.getElementById('due-summary-modal').classList.contains('active')) closeDueSummary();
+  if (typeof closeRules === 'function' && document.getElementById('rules-modal').classList.contains('active')) closeRules();
+  if (typeof closeEditMember === 'function' && document.getElementById('edit-member-modal').classList.contains('active')) closeEditMember();
+  if (typeof closeLoanHistory === 'function' && document.getElementById('loan-history-modal').classList.contains('active')) closeLoanHistory();
+  if (typeof closeClearanceSummary === 'function' && document.getElementById('clearance-summary-modal').classList.contains('active')) closeClearanceSummary();
+  if (typeof closeClearanceDetail === 'function' && document.getElementById('clearance-detail-modal').classList.contains('active')) closeClearanceDetail();
+  if (typeof closeConfirm === 'function' && document.getElementById('confirm-modal').classList.contains('active')) closeConfirm();
+
+  // Safety: ensure all remove active class
+  modals.forEach(modal => {
+    modal.classList.remove('active');
+  });
+}
+
+// Get current active tab
+function getCurrentTab() {
+  const activeView = document.querySelector('.view-section.active');
+  if (activeView) return activeView.id.replace('view-', '');
+  const activeNav = document.querySelector('.nav-item.active');
+  return activeNav ? activeNav.getAttribute('data-tab') : 'dashboard';
+}
+
+// Check if touch should be intercepted (elements that should NOT trigger swipe)
+function shouldInterceptTouch(e) {
+  const target = e.target;
+  // Allow touch on modal content for swipe down to close
+  if (target.closest('.modal-content')) return true;
+  // Block on inputs
+  if (target.closest('input') || target.closest('select') || target.closest('textarea')) return false;
+  if (target.closest('.no-swipe')) return false;
+  // Skip page swipe when on filter chips in transaction page
+  if (target.closest('#tx-filter-chips') || target.closest('.filter-chips')) return false;
+  return true;
+}
+
+// Handle touch start
+function handleTouchStart(e) {
+  if (!shouldInterceptTouch(e)) {
+    touchStartX = -1;
+    touchStartY = -1;
+    return;
+  }
+  
+  touchStartX = e.changedTouches[0].screenX;
+  touchStartY = e.changedTouches[0].screenY;
+  touchStartTime = new Date().getTime();
+  isSwipeDownClose = false;
+  isRefreshing = false;
+  
+  // Cache active modal content for performance
+  const activeModal = document.querySelector('.modal-overlay.active');
+  activeModalContent = activeModal ? activeModal.querySelector('.modal-content') : null;
+}
+
+// Handle touch move - for swipe down to close modal
+function handleTouchMove(e) {
+  if (touchStartY === -1) return;
+  
+  const currentY = e.changedTouches[0].screenY;
+  const currentX = e.changedTouches[0].screenX;
+  const deltaY = currentY - touchStartY;
+  const deltaX = currentX - touchStartX;
+  
+  if (activeModalContent) {
+    // Only trigger swipe down if we are at the top of the modal content scroll
+    if (deltaY > 0 && Math.abs(deltaX) < 60 && activeModalContent.scrollTop <= 0) {
+      if (e.cancelable) e.preventDefault();
+      
+      // Disable transitions for immediate response during drag
+      activeModalContent.style.transition = 'none';
+      
+      // Use a slight resistance
+      const transformValue = deltaY * 0.75;
+      activeModalContent.style.transform = `translateY(${transformValue}px)`;
+      
+      // Fade out slightly
+      const opacityValue = 1 - (transformValue / (window.innerHeight * 0.6));
+      activeModalContent.style.opacity = Math.max(0.5, opacityValue);
+      
+      isSwipeDownClose = true;
+      return;
+    }
+  }
+  
+  // Pull to refresh on dashboard - only when at top of page
+  const currentTab = getCurrentTab();
+  if (currentTab === 'dashboard' && deltaY > SWIPE_DOWN_REFRESH_THRESHOLD && touchStartY < 80 && !activeModalContent) {
+    if (!isRefreshing && deltaY > SWIPE_DOWN_REFRESH_THRESHOLD) {
+      if (e.cancelable) e.preventDefault();
+      isRefreshing = true;
+      showRefreshIndicator();
+      performRefresh();
+    }
+  }
+}
+
+// Handle touch end
+function handleTouchEnd(e) {
+  if (touchStartX === -1) return;
+  
+  touchEndX = e.changedTouches[0].screenX;
+  touchEndY = e.changedTouches[0].screenY;
+  const deltaX = touchEndX - touchStartX;
+  const deltaY = touchEndY - touchStartY;
+  const deltaTime = new Date().getTime() - touchStartTime;
+  
+  if (isSwipeDownClose && activeModalContent) {
+    // Re-enable transition for snapping or closing
+    activeModalContent.style.transition = 'transform 0.3s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.3s ease';
+    
+    const threshold = 200; // Increased threshold to prevent accidental closing
+    
+    // Save reference to avoids closure issues with global activeModalContent
+    const modalToAnimate = activeModalContent;
+    
+    if (deltaY > threshold) {
+      // Exit animation
+      modalToAnimate.style.transform = 'translateY(100%)';
+      modalToAnimate.style.opacity = '0';
+      setTimeout(() => {
+        closeAllModals();
+        // Reset styles after transition completes
+        modalToAnimate.style.transform = '';
+        modalToAnimate.style.opacity = '';
+        modalToAnimate.style.transition = '';
+      }, 300);
+    } else {
+      // Snap back animation
+      modalToAnimate.style.transform = 'translateY(0)';
+      modalToAnimate.style.opacity = '1';
+      setTimeout(() => {
+        // Clean up inline styles once back to normal
+        modalToAnimate.style.transform = '';
+        modalToAnimate.style.opacity = '';
+        modalToAnimate.style.transition = '';
+      }, 300);
+    }
+    isSwipeDownClose = false;
+    activeModalContent = null;
+    touchStartX = -1;
+    touchStartY = -1;
+    return;
+  }
+  
+  if (deltaTime < 300 && Math.abs(deltaX) < 10 && Math.abs(deltaY) < 10) {
+    touchStartX = -1;
+    touchStartY = -1;
+    return;
+  }
+  
+  // Page swipe navigation is disabled
+  // Users can use bottom nav tabs instead
+  /*
+  if (Math.abs(deltaX) > SWIPE_THRESHOLD && Math.abs(deltaY) < 100 && deltaTime < 500 && !activeModalContent) {
+    const currentTab = getCurrentTab();
+    const currentIndex = tabOrder.indexOf(currentTab);
+    
+    if (deltaX > 0 && currentIndex > 0) {
+      animateTabChange(tabOrder[currentIndex - 1]);
+    } else if (deltaX < 0 && currentIndex < tabOrder.length - 1) {
+      animateTabChange(tabOrder[currentIndex + 1]);
+    }
+  }
+  */
+  
+  touchStartX = -1;
+  touchStartY = -1;
+}
+
+// Show refresh indicator
+function showRefreshIndicator() {
+  let indicator = document.getElementById('refresh-indicator');
+  if (!indicator) {
+    indicator = document.createElement('div');
+    indicator.id = 'refresh-indicator';
+    indicator.innerHTML = '<i class="fas fa-sync fa-spin"></i> রিফ্রেশ হচ্ছে...';
+    indicator.style.cssText = 'position:fixed;top:0;left:0;right:0;background:var(--primary);color:white;padding:10px;text-align:center;z-index:9999;font-size:14px;';
+    document.body.appendChild(indicator);
+  }
+  indicator.style.display = 'block';
+}
+
+// Hide refresh indicator
+function hideRefreshIndicator() {
+  const indicator = document.getElementById('refresh-indicator');
+  if (indicator) {
+    indicator.style.display = 'none';
+  }
+  isRefreshing = false;
+}
+
+// Perform refresh
+function performRefresh() {
+  loadData();
+  setTimeout(() => {
+    hideRefreshIndicator();
+  }, 1500);
+}
+
+// Animate tab change with slide effect
+function animateTabChange(tabId) {
+  const viewSections = document.querySelectorAll('.view-section');
+  const currentTab = getCurrentTab();
+  const currentIndex = tabOrder.indexOf(currentTab);
+  const newIndex = tabOrder.indexOf(tabId);
+  const direction = newIndex > currentIndex ? 'left' : 'right';
+  
+  viewSections.forEach(section => {
+    if (section.classList.contains('active')) {
+      section.style.transition = 'transform 0.3s ease, opacity 0.3s ease';
+      section.style.transform = direction === 'left' ? 'translateX(-100%)' : 'translateX(100%)';
+      section.style.opacity = '0';
+      
+      setTimeout(() => {
+        section.classList.remove('active');
+        section.style.transform = '';
+        section.style.opacity = '';
+      }, 300);
+    }
+  });
+  
+  setTimeout(() => {
+    const newView = document.getElementById(`view-${tabId}`);
+    if (newView) {
+      newView.classList.add('active');
+    }
+    
+    // Update nav
+    document.querySelectorAll('.nav-item').forEach(e => e.classList.remove('active'));
+    const navItem = document.querySelector(`.nav-item[data-tab="${tabId}"]`);
+    if (navItem) navItem.classList.add('active');
+    
+    // Update FAB visibility
+    const fab = document.getElementById('fab-btn');
+    if (fab) {
+      (tabId === 'settings' || tabId === 'member-detail') ? fab.classList.add('hidden') : fab.classList.remove('hidden');
+    }
+    if (tabId === 'settings') loadSettings();
+  }, 100);
+}
+
+// Handle filter swipe
+function initFilterSwipe() {
+  const filterContainer = document.getElementById('tx-filter-chips');
+  if (!filterContainer) return;
+  
+  let filterTouchStartX = 0;
+  
+  filterContainer.addEventListener('touchstart', function(e) {
+    filterTouchStartX = e.changedTouches[0].screenX;
+  }, { passive: true });
+  
+  filterContainer.addEventListener('touchend', function(e) {
+    const deltaX = e.changedTouches[0].screenX - filterTouchStartX;
+    
+    if (Math.abs(deltaX) > SWIPE_THRESHOLD) {
+      if (deltaX > 0) {
+        navigateFilter('prev');
+      } else {
+        navigateFilter('next');
+      }
+    }
+  }, { passive: true });
+}
+
+// Navigate filters
+function navigateFilter(direction) {
+  const txFilterChips = document.querySelectorAll('#tx-filter-chips .chip');
+  if (txFilterChips.length > 0) {
+    const activeChip = document.querySelector('#tx-filter-chips .chip.active');
+    const chips = Array.from(txFilterChips);
+    const currentIndex = activeChip ? chips.indexOf(activeChip) : 0;
+    
+    let newIndex;
+    if (direction === 'next') {
+      newIndex = (currentIndex + 1) % chips.length;
+    } else {
+      newIndex = (currentIndex - 1 + chips.length) % chips.length;
+    }
+    
+    chips[newIndex].click();
+  }
+  
+  const summaryYearSelect = document.getElementById('summary-year-select');
+  if (summaryYearSelect) {
+    const currentIndex = summaryYearSelect.selectedIndex;
+    const options = summaryYearSelect.options;
+    let newIndex;
+    
+    if (direction === 'next') {
+      newIndex = Math.min(currentIndex + 1, options.length - 1);
+    } else {
+      newIndex = Math.max(currentIndex - 1, 0);
+    }
+    
+    if (newIndex !== currentIndex) {
+      summaryYearSelect.selectedIndex = newIndex;
+      summaryYearSelect.dispatchEvent(new Event('change'));
+    }
+  }
+}
+
+// Initialize touch handlers after DOM loads
+setTimeout(initTouchHandlers, 1000);
+
+// Also try to initialize immediately if DOM is already ready
+if (document.readyState === 'complete' || document.readyState === 'interactive') {
+  initTouchHandlers();
+} else {
+  document.addEventListener('DOMContentLoaded', initTouchHandlers);
+}
+
